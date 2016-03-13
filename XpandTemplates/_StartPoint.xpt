@@ -1,1 +1,10 @@
 
+«IMPORT myproject::model»
+
+«DEFINE StartPoint FOR myproject::model::Model»
+«EXPAND CreateTypeScriptServiceModel::Export FOR this -»
+«EXPAND CreateMenu::Export FOR this -»
+«EXPAND CreateRouteConfig::Export FOR this -»
+«EXPAND CreateControllerConfig::Export FOR this -»
+«EXPAND CreateViews::Export FOR this -»
+«ENDDEFINE»
