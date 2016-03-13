@@ -1,0 +1,40 @@
+«IMPORT myproject::model»
+«EXTENSION extensions::createSql»
+«EXTENSION extensions::createUi»
+«EXTENSION extensions::servisdata»
+
+«DEFINE Export FOR myproject::model::Model-»
+«LET getAllPackagesWithStereotype("FachMenue").first() AS menuPackage-»
+«LET menuPackage.getAllClassesWithStereotype("UiMenueWurzel").first() AS menuRoot-»
+
+«FILE "Config/RouteConfig.ts" -»
+"use strict";
+var virtualPath = Utils.getVirtualPath();
+angular.module("M")
+    .config([
+        <any>"$routeProvider", ($routeProvider: ng.route.IRouteProvider) => {
+            $routeProvider
+                .when("/Login", { templateUrl: virtualPath + "Views/Login.html" })
+                .when("/Dashboard", { templateUrl: virtualPath + "Views/Dashboard.html" })
+«EXPAND Menu2Route FOREACH menuRoot.getWebUiUnterMenuesSorted()-»
+                .otherwise({ redirectTo: "/Login" });
+        }
+    ]);
+«ENDFILE-»
+
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE Menu2Route FOR Clazz-»
+«LET this AS menuItem-»
+«LET this.getWebUiUnterMenuesSorted() AS subMenuItems-»
+«LET getUiDialogForUiMenueEintrag() AS dialog-»
+«IF dialog != null-»
+                .when("/«dialog.technicalName»", { templateUrl: virtualPath + "Views/generated/«dialog.technicalName».html" })
+«ENDIF-»
+«EXPAND Menu2Route FOREACH subMenuItems-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»

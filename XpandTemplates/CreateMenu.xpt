@@ -1,0 +1,50 @@
+«IMPORT myproject::model»
+«EXTENSION extensions::createSql»
+«EXTENSION extensions::createUi»
+«EXTENSION extensions::servisdata»
+
+«DEFINE Export FOR myproject::model::Model-»
+«LET getAllPackagesWithStereotype("FachMenue").first() AS menuPackage-»
+«LET menuPackage.getAllClassesWithStereotype("UiMenueWurzel").first() AS menuRoot-»
+
+«FILE "NavigationStructure.json" -»
+[
+«EXPAND CallMenu2JSON(0) FOR menuRoot.getWebUiUnterMenuesSorted()-»
+]
+«ENDFILE-»
+
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE Menu2JSON(int indentLevel, boolean lastItem) FOR Clazz-»
+«LET this AS menuItem-»
+«LET this.getWebUiUnterMenuesSorted() AS subMenuItems-»
+«LET subMenuItems.size>0 AS hasChildren-»
+«LET getUiDialogForUiMenueEintrag() AS dialog-»
+«LET hasChildren || dialog != null AS exportItem-»
+«IF exportItem-»
+«IF hasChildren-»
+«getIndent(indentLevel)»{ "text": "«this.technicalName»", "hasSubItems": «hasChildren», "subItems": [
+«ELSE-»
+«getIndent(indentLevel)»{ "text": "«this.technicalName»", "hasSubItems": «hasChildren» «IF !hasChildren && dialog != null-», "action": "«dialog.technicalName»"«ENDIF-»}«IF !lastItem-»,«ENDIF»
+«ENDIF-»
+«EXPAND CallMenu2JSON(indentLevel+1) FOR subMenuItems-»
+«IF hasChildren-»
+]}«IF !lastItem-»,«ENDIF-»
+«ENDIF-»
+«ENDIF-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CallMenu2JSON(int indentLevel) FOR List[Clazz]-»
+«LET this.size AS subItemsCount-»
+«FOREACH this AS subItem ITERATOR itemCount-»
+«EXPAND Menu2JSON(indentLevel, subItemsCount==itemCount.counter1) FOR subItem-»
+«ENDFOREACH-»
+«ENDLET-»
+«ENDDEFINE-»

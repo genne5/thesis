@@ -1,0 +1,32 @@
+«IMPORT myproject::model»
+«EXTENSION extensions::createSql»
+«EXTENSION extensions::createUi»
+«EXTENSION extensions::servisdata»
+
+«DEFINE Export FOR myproject::model::Model-»
+«LET getAllPackagesWithStereotype("myprojectFachMenue").first() AS menuPackage-»
+«LET menuPackage.getAllClassesWithStereotype("UiMenueWurzel").first() AS menuRoot-»
+
+«FILE "Config/ControllerConfig.ts" -»
+"use strict";
+angular.module("M")
+«EXPAND Controller2Module FOREACH menuRoot.getWebUiUnterMenuesSorted()-»;
+«ENDFILE-»
+
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE Controller2Module FOR Clazz-»
+«LET this AS menuItem-»
+«LET this.getWebUiUnterMenuesSorted() AS subMenuItems-»
+«LET getUiDialogForUiMenueEintrag() AS dialog-»
+«IF dialog != null-»
+    .controller("«dialog.technicalName»Ctrl", myproject.M.Controller.«dialog.technicalName»Ctrl)
+    .service("«dialog.technicalName.toFirstLower()»Svc", myproject.M.Services.DataProviders.«dialog.technicalName»Svc)
+«ENDIF-»
+«EXPAND Controller2Module FOREACH subMenuItems-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»

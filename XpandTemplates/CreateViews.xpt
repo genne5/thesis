@@ -1,0 +1,744 @@
+«IMPORT myproject::model»
+«EXTENSION extensions::createSql»
+«EXTENSION extensions::createUi»
+«EXTENSION extensions::servisdata»
+
+«DEFINE Export FOR myproject::model::Model-»
+«LET getAllPackagesWithStereotype("FachMenue").first() AS menuPackage-»
+«LET menuPackage.getAllClassesWithStereotype("UiMenueWurzel").first() AS menuRoot-»
+«LET getAllClassesWithStereotype("ServiceContract") AS services-»
+«EXPAND MenuTraversion(services) FOREACH menuRoot.getWebUiUnterMenuesSorted()-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateView4Dialog FOR Clazz-»
+«LET this AS dialog-»
+«LET dialog.getMasterBinding() AS masterEntity-»
+«LET dialog.dependencies.select(e|isUiCall((Dependency)e) && isUiTabpage(((Dependency)e).start)) AS tabPagesDependencies-»
+«LET dialog.parentPackage.parentPackage.technicalName + "_" + dialog.technicalName + "_" AS idPrefix-»
+«LET dialog.technicalName + "Ctrl" AS controllerName-»
+«FILE "Views/generated/" + dialog.technicalName + ".html" -»
+«IF tabPagesDependencies.size > 0-»
+<div id="vsplitter" kendo-splitter="" orientation="'vertical'" panes="[{ collapsible: false }, { collapsible: false, size: '300px' }]" data-ng-controller="«controllerName»" style="height: 100%;">
+    <div>
+«ELSE-»
+    <div data-ng-controller="«controllerName»">
+«ENDIF-»
+        <div id="hsplitter" kendo-splitter="" style="height: 100%; width: 100%;" panes="[{ collapsible: false, scrollable:false }, { collapsible: true, size: '200px' }]">
+            
+            «IF dialog.getBindingEntityForDialog().isHierarchicalData()-»
+            <div style="overflow-y: auto">
+                <div kendo-tree-view="tree" options="vm.masterOptions">
+                    <span k-template="">
+                         <span ng-bind="dataItem.Bezeichnung"></span>
+                    </span>
+                </div>
+            </div>
+            «ELSE-»
+            <div>
+                <kendo-grid id="«idPrefix + dialog.getBindingEntityForDialog().technicalName.toFirstLower()»DataGrid" class="hasMenu" options="vm.masterOptions" style="height: 100%"></kendo-grid>
+                <ul kendo-context-menu k-filter="'.hasMenu'">
+                    <li ng-disabled="!newCanExecute();" ng-click="new();"><i class="fa fa-file-o"></i>&nbsp;Neu</li>
+                    <li ng-disabled="!copyCanExecute();" ng-click="copy();"><i class="fa fa-clipboard"></i>&nbsp;Kopieren</li>
+                    <li class="k-separator"></li>
+                    <li><i class="fa fa-file-pdf-o"></i>&nbsp;PDF-Export</li>
+                    <li><i class="fa fa-file-excel-o"></i>&nbsp;Excel-Export</li>
+                    <li class="k-separator"></li>
+                    <li ng-disabled="!deleteCanExecute();" ng-click="delete();"><i class="fa fa-trash-o"></i>&nbsp;Löschen</li>
+                </ul>
+            </div>
+            «ENDIF-»                      
+            
+            <div layout="column">
+                <md-button class="md-raised space-btn">Aktion1</md-button>
+                <md-button class="md-raised space-btn">Aktion2</md-button>
+                <md-button class="md-raised space-btn">Aktion3</md-button>
+                <md-button class="md-raised space-btn" ng-click="printDialog.center(); printDialog.open();">Drucken</md-button>
+            </div>
+            
+            <div kendo-window="printDialog" k-title="'«dialog.technicalName»-Druck'"
+                 k-width="600" k-height="400" k-visible="false"
+                 k-content="{ url: 'Views/printDialogs/«dialog.technicalName»PrintDialogContent.html' }">
+            </div>
+            
+        </div>
+    </div>
+«IF tabPagesDependencies.size > 0-»
+    <div>
+        <md-tabs id="tabstrip" md-selected="data.selectedIndex">
+            «EXPAND CreateTab(dialog, idPrefix) FOREACH tabPagesDependencies-»
+        </md-tabs>
+    </div>
+</div>
+«ENDIF-»
+«ENDFILE-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateTab(Clazz masterDialog, String idPrefix) FOR Dependency-»
+«LET this AS uiCall-»
+«LET uiCall.start AS tabPage-»
+        <md-tab id="«tabPage.technicalName»Tab">
+            <md-tab-label ng-bind="translationSvc.getTabTranslation('«masterDialog.technicalName»', '«tabPage.technicalName»')"></md-tab-label>
+            <md-tab-body class="tab-content">
+«IF tabPage.getUiCallsForUiPanelsForComplexDialog().size >= 1-»
+    «EXPAND TabPagePanelsWeb(masterDialog, 4, idPrefix) FOR tabPage-»
+«ELSE-»
+    «EXPAND SwitchBindingType(masterDialog, 4, idPrefix) FOR tabPage -»
+«ENDIF-»
+            </md-tab-body>
+        </md-tab>
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE SwitchBindingType(Clazz masterDialog, int indentLevel, String idPrefix) FOR Clazz-»
+«LET this AS uiElement-»
+«LET uiElement.getDataBinding() AS binding-»
+«IF uiElement.hasDataBinding()-»
+    «IF binding.getTaggedValue("BindingType").toString() == "Details"-»
+        «EXPAND TabPageDetailsWeb(masterDialog, indentLevel) FOR uiElement-»
+    «ENDIF-»
+    «IF binding.getTaggedValue("BindingType").toString() == "Tabelle"-»
+        «EXPAND TabPageTabelleWeb(masterDialog, indentLevel, idPrefix) FOR uiElement-»
+    «ENDIF-»
+    «IF binding.getTaggedValue("BindingType").toString() == "NmZuordnung"-»
+        «EXPAND TabPageNmZuordnungWeb(masterDialog, indentLevel, idPrefix) FOR uiElement-»
+    «ENDIF-»
+«ENDIF-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE TabPagePanelsWeb(Clazz masterDialog, int indentLevel, String idPrefix) FOR Clazz-»
+«getIndent(indentLevel)»<!-- Panels  -->
+«LET this AS tabPage-»
+«getIndent(indentLevel)»<div kendo-splitter="" k-orientation="'horizontal'">
+«FOREACH tabPage.getUiPanelsForComplexDialog() AS panel-»
+«getIndent(indentLevel)»    <div>    
+«EXPAND SwitchBindingType(masterDialog, indentLevel+2, idPrefix) FOR panel -»
+«getIndent(indentLevel)»    </div>
+«ENDFOREACH-»
+«getIndent(indentLevel)»</div>
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE TabPageDetailsWeb(Clazz masterDialog, int indentLevel) FOR Clazz-»
+«getIndent(indentLevel)»<!-- Details  -->
+«LET this AS tabPage-»
+«getIndent(indentLevel)»<form name="loginForm">
+«LET masterDialog.getBindingEntityForDialog().getGridColumnsSorted(masterDialog.getBindingEntityForDialog()) AS columns -»
+«FOREACH columns AS column-»
+«IF column.getTypeScriptType() == "boolean"-»
+«getIndent(indentLevel)»    <md-input-container>
+«getIndent(indentLevel)»        <md-checkbox class="form-control" ng-model="vm.currentMasterEntity.«column.getDbColumnNameForAttributeOrForeignKey()»">
+«getIndent(indentLevel)»        	<span data-ng-bind="vm.getLabelTranslation('«masterDialog.technicalName»', '«tabPage.technicalName»', '«column.getDbColumnNameForAttributeOrForeignKey()»')"></span>
+«getIndent(indentLevel)»        </md-checkbox>
+«getIndent(indentLevel)»    </md-input-container>
+«ELSEIF column.isAggregation() && ((Aggregation)column).start.isTableTypKlein()-»
+«LET ((Aggregation)column).start AS sourceEntity-»
+«getIndent(indentLevel)»    <md-input-container>
+«getIndent(indentLevel)»		<label style="order:0">
+«getIndent(indentLevel)»        	<span data-ng-bind="vm.getLabelTranslation('«masterDialog.technicalName»', '«tabPage.technicalName»', '«column.getDbColumnNameForAttributeOrForeignKey()»')"></span>
+«getIndent(indentLevel)»		</label>
+«getIndent(indentLevel)»    	<md-select ng-model="vm.currentMasterEntity.«column.getDbColumnNameForAttributeOrForeignKey()-»">
+«getIndent(indentLevel)»    	<md-select-label>{{ vm.getLookupName('«sourceEntity.technicalName»Lookup', vm.currentMasterEntity.«column.getDbColumnNameForAttributeOrForeignKey()-») }}</md-select-label>
+«getIndent(indentLevel)»    	    <md-option ng-repeat="option in vm.dropDownOptions.«sourceEntity.technicalName»Lookup.dataSource"
+«getIndent(indentLevel)»            	ng-value="option.Rowid">
+«getIndent(indentLevel)»               {{ option.Bezeichnung }}
+«getIndent(indentLevel)»		    </md-option>
+«getIndent(indentLevel)»		</md-select>
+«getIndent(indentLevel)»    </md-input-container>
+«ENDLET-»
+«ELSE-»
+«getIndent(indentLevel)»    <md-input-container>
+«getIndent(indentLevel)»        <label data-ng-bind="vm.getLabelTranslation('«masterDialog.technicalName»', '«tabPage.technicalName»', '«column.getDbColumnNameForAttributeOrForeignKey()»')"></label>
+«getIndent(indentLevel)»        <input type="text" name="«column.getDbColumnNameForAttributeOrForeignKey()»" class="form-control" ng-model="vm.currentMasterEntity.«column.getDbColumnNameForAttributeOrForeignKey()»" required="true"/>
+«getIndent(indentLevel)»        <div ng-messages="loginForm.«column.getDbColumnNameForAttributeOrForeignKey()».$error" ng-if='loginForm.«column.getDbColumnNameForAttributeOrForeignKey()».$dirty'>
+«getIndent(indentLevel)»            <div ng-message="required">This is required.</div>
+«getIndent(indentLevel)»        </div>
+«getIndent(indentLevel)»    </md-input-container>
+«ENDIF-»
+«ENDFOREACH-»
+«ENDLET-»
+«getIndent(indentLevel)»</form>
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE TabPageTabelleWeb(Clazz masterDialog, int indentLevel, String idPrefix) FOR Clazz-»
+«getIndent(indentLevel)»<!-- Tabelle  -->
+«LET this AS uiElement-»
+«LET uiElement.getBindingEntityForDialog() AS binding-»
+«getIndent(indentLevel)»<kendo-grid id="«idPrefix + ((Dependency)uiElement.dependencies.selectFirst(e|((Dependency)e).hasStereotype("UiCall"))).end.technicalName»_«uiElement.technicalName»_«uiElement.technicalName.toFirstLower()»DataGrid" options="vm.kendoOptions.«binding.technicalName»" style="height: 100%"></kendo-grid>
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE TabPageNmZuordnungWeb(Clazz masterDialog, int indentLevel, String idPrefix) FOR Clazz-»
+«getIndent(indentLevel)»<!-- N-M  -->
+«LET this AS uiElement-»
+«LET uiElement.getBindingEntityForDialog() AS entity-»
+«getIndent(indentLevel)»<div kendo-splitter="" k-orientation="'horizontal'" panes="[{ collapsible: false, scrollable:false }, { collapsible: true, size: '200px' }]">
+«getIndent(indentLevel)»    <div>
+«getIndent(indentLevel)»        <kendo-grid id="«idPrefix + ((Dependency)uiElement.dependencies.selectFirst(e|((Dependency)e).hasStereotype("UiCall"))).end.technicalName»_«uiElement.technicalName»_«uiElement.technicalName.toFirstLower()»DataGrid" options="vm.kendoOptions.«entity.technicalName»" style="height: 100%"></kendo-grid>
+«getIndent(indentLevel)»    </div>
+«getIndent(indentLevel)»    <div layout="column">
+«getIndent(indentLevel)»        <md-button class="md-raised space-btn" data-ng-click="vm.show«entity.technicalName»Dialog($event)">N-M</md-button>
+«getIndent(indentLevel)»    </div>
+«getIndent(indentLevel)»</div>
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateController4Dialog FOR Clazz-»
+«LET this AS dialog-»
+«LET dialog.technicalName + "Ctrl" AS controllerName»
+«LET "I" + dialog.technicalName + "Scope" AS scopeName»
+«LET dialog.getBindingEntityForDialog() AS masterBinding»
+«LET dialog.technicalName.toFirstLower()+"Svc" AS dialogServiceName»
+«LET masterBinding.technicalName+"Entitaet" AS masterEntityName»
+«LET dialog.technicalName+"Dialog" AS dialogName»
+«LET "ServiceModel.Dialogs."+dialog.parentPackage.parentPackage.technicalName + "." + dialogName AS dialogServiceTypePrefix»
+«LET dialogServiceTypePrefix+"F" AS dialogServiceRequestTypeName»
+«LET dialogServiceTypePrefix+"A" AS dialogServiceResponseTypeName»
+«FILE "Controllers/generated/" + controllerName + ".ts" -»
+module myproject.M.Controller {
+    export interface «scopeName» extends IWindowScope {
+        vm: {
+        	lookUps: any;
+            kendoOptions: any;
+        «IF dialog.getBindingEntityForDialog().isHierarchicalData()-»
+            masterOptions: kendo.ui.TreeViewOptions;
+        «ELSE-»
+            masterOptions: kendo.ui.GridOptions;
+        «ENDIF-»
+            currentMasterEntity: any;
+            «FOREACH dialog.getDataBindingsForPanelsAndTabPages().select(e|e.isNMBinding()).getBindingEntity() AS nmEntity-»
+            show«nmEntity.technicalName»Dialog: ($event: ng.IAngularEvent) => void;
+            «ENDFOREACH-»
+            getDropDownOptions: (lookupName: string) => any;
+            dropDownOptions: {[index: string]: any};
+            getLookupName: (table: string, id: any) => string;
+            getTextForBool: (value: boolean) => string;
+            print: {
+                print: () => void;
+                getPrintFile: () => ng.IPromise<any>;
+                printFileLink: string;
+                generatingReport: boolean;
+            }
+        };
+    }
+    
+    export class «controllerName» extends WindowCtrl {
+    	lookUps: {[tableName: string]: {[id: string]: any}} = {};
+    	baseSave: () => boolean;
+    	lastGrid: any;
+        static $inject = ["$rootScope", "$scope", "$log", "«dialogServiceName»", "commonSvc", "globalUserConstantsSvc", "$timeout", "$q", "translationSvc", "permissionSvc", "validationSvc", "editorSvc", "hotkeys"];
+        constructor(
+        	private $rootScope,
+            private $scope: «scopeName»,
+            private $log: ng.ILogService, 
+            private «dialogServiceName»: M.Services.DataProviders.I«dialog.technicalName»Svc,
+            private commonSvc: M.Services.ICommonSvc,
+            private globalUserConstants: M.Services.IGlobalUserConstantsSvc,
+            private $timeout: ng.ITimeoutService,
+            private $q: ng.IQService,
+            private translateSvc: Services.ITranslationSvc,
+            private permissionSvc: Services.IPermissionSvc,
+            private validationSvc: Services.IValidationSvc,
+            private editorSvc: Services.IEditorSvc,
+            private hotkeys: cfp.IHotkeysService) {
+            super($log, $scope);
+            var self = this;
+            this.baseSave = this.save;
+            this.save = this.overriddenSave;
+            this.validate = this.overriddenValidate;
+            this.$scope.translationSvc = this.translateSvc;
+            this.$scope.permissionSvc = this.permissionSvc;
+            this.$scope.vm = <any>{};
+            this.$scope.vm.currentMasterEntity = <any>{};
+            this.$scope.vm.lookUps = <any>{};
+            
+            hotkeys.bindTo($scope).add({
+                combo: "ctrl+s",
+                description: "Speichern",
+                allowIn: ["INPUT", "SELECT", "TEXTAREA"],
+                callback: (event, hotkey) => {
+                    event.preventDefault();
+                    if (this.$scope.saveCanExecute()) {
+                        this.$scope.save();
+                    }
+                }
+            }).add({
+                combo: "ctrl+p",
+                description: "Drucken",
+                allowIn: ["INPUT", "SELECT", "TEXTAREA"],
+                callback: (event, hotkey) => {
+                    event.preventDefault();
+                    if (this.$scope.printCanExecute()) {
+                        this.$scope.print();
+                    }
+                }
+            });
+            
+            this.$rootScope.myprojectm = {
+                title: "«dialog.technicalName»",
+                hideLogoutButton: false
+            };
+            
+            // dafuer sorgen, dass bei Klick auf ein Tabpanel die Splitter innerhalb des Tabs neu berechnet werden
+            function resizeTabStrip() {
+                var tabstripElement = $("#tabstrip");
+                var anc = tabstripElement.parent(".k-pane.k-scrollable");
+                var contentArea = tabstripElement.find(".md-tab-content");
+                angular.forEach(contentArea,(tabContent) => {
+                    $(tabContent).height(anc.innerHeight() - 80);
+                });
+            };
+            $(".md-header-items-container").click(() => {
+                window.setTimeout(() => { $(window).resize(); }, 500);
+            });            
+            // Alle Kendo-Elemente sind gerendert.
+            $scope.$on("kendoRendered",(e) => {
+                var splitter: kendo.ui.Splitter = $("#vsplitter").data("kendoSplitter");
+                splitter.bind("resize", resizeTabStrip);
+                resizeTabStrip();
+                
+                // Maus-Rechtsklick == Maus-Linksklick ==> Selection 
+                var allGrids = $(".k-grid");
+                allGrids.on("mousedown", "tr[role='row']", (e) => {
+                    if (e.which === 3) {
+                        $("tr").removeClass("k-state-selected");
+                        $(this).toggleClass("k-state-selected");
+                    }
+                });
+                
+                // Current Grid
+                allGrids.on("mousedown", function (e) {
+                    self.lastGrid = angular.element(e.currentTarget);
+                });
+            });
+            
+            this.$scope.vm.getLookupName = (entity, id) => {
+                if (!angular.isString(id)) {
+                    return "";
+                }
+                return this.lookUps[entity][id].Bezeichnung;
+            }
+            
+            this.$scope.vm.getTextForBool = (value) => {
+                return value ? "Ja" : "Nein";
+            }
+            
+            //#region print
+            this.$scope.vm.print = {
+                printFileLink: "",
+                generatingReport: false,
+                print: () => {
+                    this.$scope.vm.print.printFileLink = null;
+                    this.$scope.vm.print.getPrintFile().then((file) => {
+                        this.$scope.vm.print.printFileLink = file;
+                    });
+                },
+                getPrintFile: () => {
+                    var defer = this.$q.defer();
+                    this.$scope.vm.print.generatingReport = true;
+                    this.$timeout(() => {
+                        this.$scope.vm.print.generatingReport = false;
+                        defer.resolve({ name: "Auswertung «dialog.technicalName»", url: "Views/generated/demo.pdf" });
+                    }, 1500);
+
+                    return defer.promise;
+                }
+            };
+            //#endregion
+            
+            this.defineMasterKendoOptions();
+            this.defineDetailKendoOptions();
+            
+            this.commonSvc.SetNgViewToFullHeight();
+            
+            this.$scope.newCanExecute = () => {
+                var ok = self.permissionSvc.hasPermission(angular.element(self.lastGrid).attr("id"));
+                return ok;
+            };
+            this.$scope.new = () => {
+                self.$log.log("Last:",self.lastGrid);
+                //self.lastGrid.data().kendoGrid.dataSource.add({});
+                self.lastGrid.data().kendoGrid.addRow();
+            };
+            
+            «FOREACH dialog.getDataBindingsForPanelsAndTabPages().select(e|e.isNMBinding()).getBindingEntity() AS nmEntity-»
+            «LET nmEntity.getLookupEntityForNMBindingEntity(masterBinding) AS lookupEntity-»
+            $scope.vm.show«nmEntity.technicalName»Dialog = ($event: ng.IAngularEvent) => {
+                var selected = [];
+                «IF nmEntity.isHierarchicalData()-»
+                //TODO: Hierarchische Daten 
+            	this.commonSvc.ShowSelectionBox($event, selected, this.$scope.vm.lookUps.«lookupEntity.technicalName»);
+            	«ELSE-»
+            	this.commonSvc.ShowSelectionBox($event, selected, this.$scope.vm.lookUps.«lookupEntity.technicalName»);
+            	«ENDIF-»                
+            };
+            «ENDLET-»
+            «ENDFOREACH-»
+        }
+        
+        protected overriddenSave(): boolean {
+            this.$log.log("save is implemented");
+
+            if (!this.hasChanges()) {
+                return true;
+            }
+
+            if (!this.baseSave()) {
+                return false;
+            }
+
+            var changedData = this.getChangedData();
+            this.$log.log("ChangedData: ", changedData);
+
+            var request: «dialogServiceRequestTypeName» = <any>{};
+            request.«dialogName» = <any>{};
+            request.«dialogName».«masterEntityName» = changedData.«masterEntityName»;
+            «LET dialog.getTableDataEntitiesForPanelsAndTabPages() AS tableBindingEntities -»
+            «FOREACH tableBindingEntities AS tableEntity -»
+            request.«dialogName».«tableEntity.technicalName»Entitaet = changedData.«tableEntity.technicalName»Entitaet;
+            «ENDFOREACH-»
+            «ENDLET-»
+            this.«dialogServiceName».speichern(request);
+
+            return true;
+        }
+        
+        private getChangedData(): any {
+            var returnData = {};
+            returnData["«masterEntityName»"] = this.getChangedDataFromOption(this.$scope.vm.masterOptions);
+            «LET dialog.getTableDataEntitiesForPanelsAndTabPages() AS tableBindingEntities -»
+            «FOREACH tableBindingEntities AS tableEntity -»
+            returnData["«tableEntity.technicalName»Entitaet"] = this.getChangedDataFromOption(this.$scope.vm.kendoOptions.«tableEntity.technicalName»);
+            «ENDFOREACH-»
+            «ENDLET-»
+            return returnData;
+        }
+
+        protected overriddenValidate(): boolean {
+            this.$log.log("validate is implemented");
+            var allgrids = angular.element("div[kendo-grid]");
+            var ok = true;
+            for (var i = 0; i < allgrids.length; i++) {
+                ok = angular.element(allgrids[i]).kendoValidator().data("kendoValidator").validate();
+                if (!ok) {
+                    this.$log.log("validation fails");
+                    return false;
+                }
+            }
+
+            return ok;
+        }
+        
+        protected hasChanges(): boolean {
+            //this.$log.log("hasChanges is implemented");
+
+            var hasChanges = this.$scope.vm.masterOptions.dataSource.hasChanges();
+            if (!hasChanges) {
+                var kendoOptions = this.$scope.vm.kendoOptions;
+                for (var option in kendoOptions) {
+                    if (kendoOptions.hasOwnProperty(option)) {
+                        hasChanges = kendoOptions[option].dataSource.hasChanges();
+                        if (hasChanges) {
+                            break;
+                        }
+                    }
+                }    
+            }
+            //this.$log.log(hasChanges ? "changes exists" : "no change exists");
+            return hasChanges;
+        }
+        
+        private defineMasterKendoOptions() {
+            «IF dialog.getBindingEntityForDialog().isHierarchicalData()-»
+            var model = {
+                encoded: false,
+                children: "subItems",
+                hasChildren: "hasSubItems"
+            };
+            this.$scope.vm.masterOptions = this.bindDialogService2TreeView(this.«dialogServiceName», "«dialogName».«masterEntityName»", model, <any>this);
+            «ELSE-»
+            var model = {
+                id: "Rowid",
+                fields: {
+                    Rowid: { type: "string", editable: false, nullable: false, defaultValue: Utils.GenerateGuid() },
+                    Mandant: { type: "string", editable: false, nullable: false, defaultValue: this.globalUserConstants.mandantenId },
+                    «EXPAND CreateFieldDefinitionsForEntity(masterBinding, 5) FOR masterBinding-»
+                }
+            };
+            this.$scope.vm.masterOptions = this.bindDialogService2DataGrid(this.«dialogServiceName», "«dialogName».«masterEntityName»", model, <any>this, «dialog.isPageable()»);
+            this.$scope.vm.masterOptions.columns = [
+            «EXPAND CreateColumnDefinitionsForEntity(dialog, 4, true) FOR masterBinding-»
+            ];
+            «ENDIF-» 
+        }
+        
+        private defineDetailKendoOptions() {
+            this.$scope.vm.kendoOptions = {};
+            «LET dialog.getTableDataEntitiesForPanelsAndTabPages() AS tableBindingEntities -»
+            «FOREACH tableBindingEntities AS tableEntity -»
+            this.$scope.vm.kendoOptions.«tableEntity.technicalName» = this.createGridOptions();
+            this.$scope.vm.kendoOptions.«tableEntity.technicalName».dataSource = new kendo.data.DataSource({
+                transport: { read: this.gridArrayRead},
+                schema: {
+                    model:{
+                        id: "Rowid",
+                        fields: {
+                            Rowid: { type: "string", editable: false, nullable: false, defaultValue: Utils.GenerateGuid() },
+		                    Mandant: { type: "string", editable: false, nullable: false, defaultValue: this.globalUserConstants.mandantenId },
+                            «EXPAND CreateFieldDefinitionsForEntity(masterBinding, 7) FOR tableEntity-»
+                        }
+                    }
+                }
+            });
+            this.$scope.vm.kendoOptions.«tableEntity.technicalName».columns = [
+                «EXPAND CreateColumnDefinitionsForEntity(dialog, 5, false) FOR tableEntity-»
+            ];
+            «ENDFOREACH-»
+            «ENDLET-»   
+        }
+        
+        protected prepareRequestForGetLookups(request) {
+            request.Filter.Rowid = Utils.GuidEmpty();
+            request.LookupStatus = <any>[
+            «LET dialog.getLookupEntitiesForComplexDialog().size AS lookupCount -»
+            «FOREACH dialog.getLookupEntitiesForComplexDialog().sortBy(e|e.technicalName) AS lookup ITERATOR iter-»
+                { SchemaName: "«lookup.parentPackage.technicalName»", TableName: "«lookup.technicalName»", Mandant: this.globalUserConstants.mandantenId }«IF lookupCount != iter.counter1-»,«ENDIF»
+            «ENDFOREACH-»
+            «ENDLET-»
+            ];
+        }
+        
+        protected setLookups(response) {
+        	this.$scope.vm.dropDownOptions = {};
+            var getDropDownOptions = (lookupName) => {
+                return {
+                    dataTextField: "Bezeichnung",
+                    dataValueField: "Rowid",
+                    dataSource: response[lookupName],
+                    valuePrimitive: true
+                }
+            }
+        
+            this.$log.log("setLookups");
+            «FOREACH dialog.getLookupEntitiesForComplexDialogKlein().sortBy(e|e.technicalName) AS lookup-»
+            this.$log.debug("«lookup.technicalName»Lookup");
+            this.$log.debug(response.«lookup.technicalName»Lookup);
+            
+            this.lookUps["«lookup.technicalName»Lookup"] = Utils.ArrayToHashMap(response.«lookup.technicalName»Lookup, "Rowid");
+            this.$scope.vm.dropDownOptions["«lookup.technicalName»Lookup"] = getDropDownOptions("«lookup.technicalName»Lookup");
+            
+            «IF lookup.isHierarchicalData()-»
+            this.$scope.vm.lookUps.«lookup.technicalName» = Utils.makeHierarchical(response.«lookup.technicalName»Lookup);
+            «ELSE-»
+            this.$scope.vm.lookUps.«lookup.technicalName» = response.«lookup.technicalName»Lookup;
+            «ENDIF-»
+            «ENDFOREACH-»
+        }
+        
+        protected getDetails(masterEntityParam) {
+            var request: «dialogServiceRequestTypeName» = <any>{};
+            request.Filter = <any>{};
+            request.Filter.Rowid = masterEntityParam.Rowid;
+            request.BenutzerHatAlleMasterOrgEinheitenHolen = true;
+            
+            this.«dialog.technicalName.toFirstLower()»Svc.lesen(request)
+                .then(response => {
+                if (masterEntityParam.Rowid !== this.$scope.vm.currentMasterEntity.Rowid) {
+                    this.$log.log("response discarded");
+                    return;
+                }
+
+                this.$log.debug("getDetails");
+                this.$log.debug(response);
+                
+                «LET dialog.getTableDataEntitiesForPanelsAndTabPages() AS tableBindingEntities -»
+                «FOREACH tableBindingEntities AS tableEntity -»
+                this.$scope.vm.kendoOptions.«tableEntity.technicalName».dataSource.read({ data: response.«dialogName».«tableEntity.technicalName»Entitaet });
+                «ENDFOREACH-»
+                «ENDLET-»    
+            });
+        }
+    }
+}
+«ENDFILE-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE GetUniqueIndexDefinition(Clazz entity, String columnName) FOR Clazz-»
+«LET entity.getTaggedAttributesAndForeignKeysForEntity("uniqueindex1") AS UX1-»
+«LET entity.getTaggedAttributesAndForeignKeysForEntity("uniqueindex2") AS UX2-»
+«LET entity.getTaggedAttributesAndForeignKeysForEntity("uniqueindex3") AS UX3-»
+«LET entity.getTaggedAttributesAndForeignKeysForEntity("uniqueindex4") AS UX4-»
+«LET entity.getTaggedAttributesAndForeignKeysForEntity("uniqueindex5") AS UX5-»
+«LET UX1.size > 0 && UX1.select(e|e.getDbColumnNameForAttributeOrForeignKey() == columnName).size > 0 AS UX1exists-»
+«LET UX2.size > 0 && UX2.select(e|e.getDbColumnNameForAttributeOrForeignKey() == columnName).size > 0 AS UX2exists-»
+«LET UX3.size > 0 && UX3.select(e|e.getDbColumnNameForAttributeOrForeignKey() == columnName).size > 0 AS UX3exists-»
+«LET UX4.size > 0 && UX4.select(e|e.getDbColumnNameForAttributeOrForeignKey() == columnName).size > 0 AS UX4exists-»
+«LET UX5.size > 0 && UX5.select(e|e.getDbColumnNameForAttributeOrForeignKey() == columnName).size > 0 AS UX5exists-»
+«LET UX1exists AS UX2PrintComma-»
+«LET UX1exists || UX2exists AS UX3PrintComma-»
+«LET UX1exists || UX2exists || UX3exists AS UX4PrintComma-»
+«LET UX1exists || UX2exists || UX3exists || UX4exists AS UX5PrintComma-»
+«IF UX1exists || UX2exists || UX3exists || UX4exists || UX5exists -», true, «IF UX1exists-»[«FOREACH UX1 AS tagged SEPARATOR ", "-»"«tagged.getDbColumnNameForAttributeOrForeignKey()-»"«ENDFOREACH-»]«ENDIF-»
+«IF UX2exists-»«IF UX2PrintComma-», «ENDIF-»[«FOREACH UX2 AS tagged SEPARATOR ", "-»"«tagged.getDbColumnNameForAttributeOrForeignKey()-»"«ENDFOREACH-»]«ENDIF-»
+«IF UX3exists-»«IF UX3PrintComma-», «ENDIF-»[«FOREACH UX2 AS tagged SEPARATOR ", "-»"«tagged.getDbColumnNameForAttributeOrForeignKey()-»"«ENDFOREACH-»]«ENDIF-»
+«IF UX4exists-»«IF UX4PrintComma-», «ENDIF-»[«FOREACH UX2 AS tagged SEPARATOR ", "-»"«tagged.getDbColumnNameForAttributeOrForeignKey()-»"«ENDFOREACH-»]«ENDIF-»
+«IF UX5exists-»«IF UX5PrintComma-», «ENDIF-»[«FOREACH UX2 AS tagged SEPARATOR ", "-»"«tagged.getDbColumnNameForAttributeOrForeignKey()-»"«ENDFOREACH-»]«ENDIF-»
+«ENDIF-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateFieldDefinitionsForEntity(Clazz masterEntity, int indentLevel) FOR Clazz-»
+«LET this AS entity-»
+«LET entity.getGridColumnsSorted(masterEntity) AS columns -»
+«FOREACH columns AS column ITERATOR iter-»
+«LET column.getDbColumnNameForAttributeOrForeignKey() AS columnName-»
+«getIndent(indentLevel)»«columnName»: { type: "«column.getTypeScriptType()»", editable: «column.isEditable()», nullable: «column.isNullable()», validation: this.validationSvc.createColValidation("«columnName»", "«IF column.isAttribute()-»«((Attribute)column).typ»«ELSE»Id«ENDIF-»", «column.isNullable()»«EXPAND GetUniqueIndexDefinition(entity, columnName)-») }«IF iter.counter1 != columns.size-»,«ENDIF»
+«ENDLET-»
+«ENDFOREACH-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateColumnDefinitionsForEntity(Clazz dialog, int indentLevel, boolean isMaster) FOR Clazz-»
+«LET this AS entity-»
+«LET entity.getGridColumnsSorted(dialog.getBindingEntityForDialog()) AS columns -»
+«FOREACH columns AS column ITERATOR iter-»
+«IF column.isAggregation() && ((Aggregation)column).start.isTableTypKlein()-»
+    «LET ((Aggregation)column).start AS sourceEntity-»
+«getIndent(indentLevel)»{ field: "«column.getDbColumnNameForAttributeOrForeignKey()»", title: <any>this.translateSvc.getColnameTranslation("«entity.technicalName-»", "«column.getDbColumnNameForAttributeOrForeignKey()»", «isMaster»), width: 175, locked: «column.getTaggedValue("GridFixed")», lockable: «column.getTaggedValue("GridFixable")», template: "#=$(\"div[data-ng-controller='«dialog.technicalName»Ctrl']\").scope().vm.getLookupName('«sourceEntity.technicalName»Lookup', «column.getDbColumnNameForAttributeOrForeignKey()»)#", editor: this.editorSvc.idEditor("«sourceEntity.technicalName»Lookup")  }«IF iter.counter1 != columns.size-»,«ENDIF»
+    «ENDLET-»  
+«ELSE-»
+«IF column.getTypeScriptType() == "boolean"-»
+«getIndent(indentLevel)»{ field: "«column.getDbColumnNameForAttributeOrForeignKey()»", title: <any>this.translateSvc.getColnameTranslation("«entity.technicalName-»", "«column.getDbColumnNameForAttributeOrForeignKey()»", «isMaster»), width: 175, locked: «column.getTaggedValue("GridFixed")», lockable: «column.getTaggedValue("GridFixable")», template: "#=$(\"div[data-ng-controller='«dialog.technicalName»Ctrl']\").scope().vm.getTextForBool(«column.getDbColumnNameForAttributeOrForeignKey()»)#"}«IF iter.counter1 != columns.size-»,«ENDIF»
+«ELSEIF column.getTypeScriptType() == "number" -»
+«getIndent(indentLevel)»{ field: "«column.getDbColumnNameForAttributeOrForeignKey()»", title: <any>this.translateSvc.getColnameTranslation("«entity.technicalName-»", "«column.getDbColumnNameForAttributeOrForeignKey()»", «isMaster»), width: 175, locked: «column.getTaggedValue("GridFixed")», lockable: «column.getTaggedValue("GridFixable")»«column.getEditorFormat()», attributes: { style: "text-align:right;" }, editor: this.editorSvc.«column.getEditorType()»() }«IF iter.counter1 != columns.size-»,«ENDIF»
+«ELSE-»
+«getIndent(indentLevel)»{ field: "«column.getDbColumnNameForAttributeOrForeignKey()»", title: <any>this.translateSvc.getColnameTranslation("«entity.technicalName-»", "«column.getDbColumnNameForAttributeOrForeignKey()»", «isMaster»), width: 175, locked: «column.getTaggedValue("GridFixed")», lockable: «column.getTaggedValue("GridFixable")» }«IF iter.counter1 != columns.size-»,«ENDIF»
+«ENDIF-»
+«ENDIF-»
+«ENDFOREACH-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE CreateDataProvider4Dialog(Clazz dialogService) FOR Clazz-»
+«LET this.parentPackage.parentPackage.technicalName AS moduleName-»
+«LET "ServiceModel.Dialogs." + moduleName AS namespace-»
+«LET "ServiceModel."+this.parentPackage.parentPackage.technicalName AS namespaceExt-»
+«LET "Dialogs."+this.technicalName+"DialogF" AS request-»
+«LET "Dialogs."+this.technicalName+"DialogA" AS response-»
+«FILE "Services/DataProviders/" + this.technicalName + "Svc.ts" -»
+module myproject.M.Services.DataProviders {
+    import Dialogs = «namespace»;
+    import Services = «namespaceExt»;
+    
+     export interface I«this.technicalName»Svc{
+        lesen(request: «request»): ng.IPromise<«response»>;
+        drucken(request: «request»): ng.IPromise<«response»>;
+        speichern(request: «request»): ng.IPromise<«response»>;
+        checkRelationships(request: «request»): ng.IPromise<«response»>;
+«IF dialogService != null-»
+    «FOREACH dialogService.methods AS method-»
+        «method.semanticName.toFirstLower()»(«EXPAND OperationContractParam("Services.") FOREACH (Collection[Signature]) method.params-»): ng.IPromise<«"Services."+method.typ»>;
+    «ENDFOREACH-»
+«ENDIF-»
+    }
+    
+    export class «this.technicalName»Svc implements I«this.technicalName»Svc {
+        static $inject = ["serviceCallWrapper"];
+        
+        private baseUrl: string;
+        
+        constructor(private serviceCallWrapper: M.Services.IServiceCallWrapper) {
+            this.baseUrl = Utils.getVirtualBasePath() + "Service«this.technicalName»Dialog.svc/rest/";
+        }
+        
+        lesen(request: «request»): ng.IPromise<«response»>{
+            return this.serviceCallWrapper.callService<«request», «response»>(this.baseUrl + "Lesen", request);
+        }
+        drucken(request: «request»): ng.IPromise<«response»>{
+            return this.serviceCallWrapper.callService<«request», «response»>(this.baseUrl + "Drucken", request);
+        }
+        speichern(request: «request»): ng.IPromise<«response»>{
+            return this.serviceCallWrapper.callService<«request», «response»>(this.baseUrl + "Speichern", request);
+        }
+        checkRelationships(request: «request»): ng.IPromise<«response»>{
+            return this.serviceCallWrapper.callService<«request», «response»>(this.baseUrl + "CheckRelationships", request);
+        }
+«IF dialogService != null-»
+    «FOREACH dialogService.methods AS method-»
+        «method.semanticName.toFirstLower()»(«EXPAND OperationContractParam("Services.") FOREACH (Collection[Signature]) method.params-»): ng.IPromise<«"Services."+method.typ»>{
+            return this.serviceCallWrapper.callService<«EXPAND OperationContractGenericTypParam("Services.") FOREACH (Collection[Signature]) method.params-», «"Services."+method.typ»>(this.baseUrl + "«method.semanticName»", request);
+        }
+    «ENDFOREACH-»
+«ENDIF-»
+    }
+}
+«ENDFILE-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»
+
+«DEFINE OperationContractGenericTypParam(String namespace) FOR myproject::model::Signature-»
+«namespace+this.typ-»
+«ENDDEFINE»
+
+«DEFINE OperationContractParam(String namespace) FOR myproject::model::Signature-»
+«name != '' ? name : 'request'-»: «namespace+this.typ-»
+«ENDDEFINE»
+
+«DEFINE MenuTraversion(List[Clazz] services) FOR Clazz-»
+«LET this AS menuItem-»
+«LET this.getWebUiUnterMenuesSorted() AS subMenuItems-»
+«LET getUiDialogForUiMenueEintrag() AS dialog-»
+«LET services.selectFirst(e|e.technicalName == dialog.technicalName) AS dialogService-»
+«IF dialog != null-»
+«EXPAND CreateView4Dialog FOR dialog-»
+«EXPAND CreateController4Dialog FOR dialog-»
+«EXPAND CreateDataProvider4Dialog(dialogService) FOR dialog-»
+«ENDIF-»
+«EXPAND MenuTraversion(services) FOREACH subMenuItems-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDLET-»
+«ENDDEFINE-»

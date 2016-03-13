@@ -1,0 +1,195 @@
+«IMPORT myproject::model»
+«EXTENSION extensions::createSql»
+«EXTENSION extensions::createUi»
+«EXTENSION extensions::servisdata»
+
+«DEFINE Export FOR myproject::model::Model-»
+«FILE "Models/ServiceModel.d.ts" -»
+declare module myproject.ServiceModel {
+    export interface LocalizedError {
+        LocalizeConstant: string;
+        Parameters: string[];
+        Weight: WeightType;
+    }
+    export interface BasisNachrichtenObjekt {
+    }
+    export interface BasisA extends BasisNachrichtenObjekt {
+        HatFehler: boolean;
+        Errors: LocalizedError[];
+        LogEntries: string[];
+        DetailErrors: string[];
+        BenutzerHatAlleMasterOrgEinheiten: boolean;
+        RowCount: number;
+        ElapsedMillisecondsServer: number;
+    }
+    export interface BasisF extends BasisNachrichtenObjekt {
+        SessionId: any;
+        Ip: string;
+        UserId: any;
+        UserName: string;
+        MaschinenName: string;
+        MandantenID: any;
+        Paging: boolean;
+        PageStart: number;
+        PageSize: number;
+        VolltextSuche: string;
+        ExtSqlRestriction: string;
+        AdvFilterRestriction: string;
+        MasterGuids: any[];
+        NurLookUpsHolen: boolean;
+        BenutzerHatAlleMasterOrgEinheitenHolen: boolean;
+        TableSortRefTable: string;
+        TableSortColumn: string;
+        Sortierung: string;
+        GetRowCount: boolean;
+        CultureCode: string;
+        GetFirstRelation: boolean;
+        CustomFlag: boolean;
+    }
+    export interface BasisDM extends BasisNachrichtenObjekt {
+        BenutzerIstNichtOrgEinheitenBerechtigt: boolean;
+        UpdateMask: number[];
+    }
+    export interface Entity {
+        Rowid: any;
+        Mandant: any;
+        ErstelltVon: string; 
+        ErstelltAm: Date;
+        GeaendertVon: string;
+        GeaendertAm: Date;
+        ChangeType: ChangeType;
+    }
+
+    // TODO: Die Templates für Dialog-Lesen-Services müssen noch komplett erstellt werden
+    // XXX
+    
+    export interface LookupStatusDM {
+        ChangeType: ChangeType;
+        LetzteAenderung: Date;
+        Mandant: any; // GUID 
+        Rowid: any; // GUID
+        SchemaName: string;
+        TableName: string;
+        Timestamp: any; // byte[]
+    }
+
+    module Entities {
+«LET this.packages.getAllClassesWithStereotype(getEntityStereotypeName()) AS entities-»
+    «FOREACH entities.sortBy(e|e.technicalName) AS entity-»
+        export interface «entity.technicalName»EntitaetDM extends Entity, BasisDM {
+        «FOREACH entity.attributes.sortBy(e|e.technicalName) AS property-»
+            «property.technicalName»: «checkSigTypeStringForTypeScript(property.typ)»«IF property.isListe()-»[]«ENDIF-»;
+        «ENDFOREACH-»
+        «FOREACH entity.getForeignKeyAggregations().sortBy(e|e.technicalName) AS aggregation-»
+            «aggregation.roleNameEnd»: any; // GUID
+        «ENDFOREACH-»
+        }    
+    «ENDFOREACH-»
+«ENDLET-»
+    }
+
+    module Lookups {
+        export interface LookupBase{
+            Rowid: any; // GUID
+            IsDeleted: boolean;
+        }
+        
+«LET this.packages.getAllClassesWithStereotype(getEntityStereotypeName()) AS entities-»
+    «FOREACH entities.sortBy(e|e.technicalName) AS entity-»
+    «LET entity.attributes.select(e|e.getTaggedValue(getLookupTaggedValueName())=="true").sortBy(e|e.technicalName) AS lookupProperties-»
+    «LET entity.aggregations.select(e|e.cardinalityEnd == "*" && e.end.iid == e.start.iid ).sortBy(e|e.technicalName) AS lookupAggregations-»
+        export interface «entity.technicalName»LookupDM extends LookupBase {
+        «FOREACH lookupProperties AS lookupProperty-»
+            «lookupProperty.technicalName»: «checkSigTypeStringForTypeScript(lookupProperty.typ)»«IF lookupProperty.isListe()-»[]«ENDIF-»;
+        «ENDFOREACH-»
+        «FOREACH lookupAggregations AS lookupAggregation-»
+            «lookupAggregation.roleNameEnd.toFirstUpper()»: any; // GUID
+        «ENDFOREACH-»
+        }
+    «ENDLET-»
+    «ENDLET-»    
+    «ENDFOREACH-»
+«ENDLET-»
+    }
+    
+    module Dialogs {
+«FOREACH this.packages.getAllPackagesWithStereotype("UiLayer").sortBy(e|e.technicalName) AS module-»
+        module «module.technicalName» {
+«FOREACH module.getAllClassesWithStereotype("UiDialog").sortBy(e|e.technicalName) AS dialog-»
+            export interface «dialog.technicalName»DialogF extends BasisF {
+                «dialog.technicalName»Dialog: «dialog.technicalName»DialogDM;
+                Filter: Entities.«dialog.getBindingEntityForDialog().technicalName»EntitaetDM;
+                LookupStatus: LookupStatusDM[];
+            }
+            export interface «dialog.technicalName»DialogA extends BasisA {
+«FOREACH dialog.getLookupEntitiesForComplexDialog().sortBy(e|e.technicalName) AS lookup-»
+                «lookup.technicalName»Lookup: Lookups.«lookup.technicalName»LookupDM[];
+«ENDFOREACH-»
+                LookupStatus: LookupStatusDM;
+                «dialog.technicalName»Dialog: «dialog.technicalName»DialogDM;
+            }
+            export interface «dialog.technicalName»DialogDM extends BasisDM {
+            «FOREACH dialog.getBindingEntitiesForComplexDialog().sortBy(e|((Clazz)e).technicalName) AS entity-»
+                «entity.technicalName»Entitaet: Entities.«entity.technicalName»EntitaetDM[];
+            «ENDFOREACH-»
+            }
+«ENDFOREACH-»
+        }
+«ENDFOREACH-»
+    }
+
+    // folgende Interfaces sind abhängige Datenbank Entities, 
+    // welche als Eigenschaften in den Services genutzt werden
+    // eigentlich schlechte Modellierung aber was Bequemlichkeit nicht alles erzeugen kann...
+«LET this.packages.getAllPackagesWithStereotype("ServiceLayer").getAllAttributes().collect(e|e.typ).toSet() AS allDistinctAttributes -»
+«LET this.packages.getAllClassesWithStereotype("Entity").select(e|allDistinctAttributes.contains(e.technicalName)).sortBy(e|e.parentPackage.technicalName+"."+e.technicalName) AS allDependedEntities -»
+«FOREACH allDependedEntities AS entity -»
+    export interface «entity.technicalName» extends Entity {
+            «FOREACH entity.attributes AS attribute -»
+            «attribute.technicalName»: «checkSigTypeStringForTypeScript(attribute.typ)»«IF attribute.isListe()-»[]«ENDIF-»;
+            «ENDFOREACH-»
+    }
+«ENDFOREACH-»
+«ENDLET-»
+«ENDLET-»
+}
+
+«FOREACH this.packages AS package -»
+«LET package.getAllPackagesWithStereotype("ServiceLayer") AS serviceLayerPackages -»
+    «FOREACH serviceLayerPackages AS serviceLayerPackage -»
+        «LET (List[Clazz])serviceLayerPackage.getAllClassesWithStereotype(getDataContractFrageStereotypeName()).sortBy(e|e.technicalName) AS requests -»
+        «LET (List[Clazz])serviceLayerPackage.getAllClassesWithStereotype(getDataContractAntwortStereotypeName()).sortBy(e|e.technicalName) AS responses -»
+        «LET (List[Clazz])serviceLayerPackage.getAllClassesWithStereotype(getDataContractStereotypeName()).sortBy(e|e.technicalName) AS members -»
+        «IF requests.size > 0 || responses.size > 0 -»  
+declare module myproject.ServiceModel.«serviceLayerPackage.technicalName» {
+        «FOREACH requests AS request -»
+    export interface «request.technicalName» extends BasisF {
+            «FOREACH request.attributes AS attribute -»
+            «attribute.technicalName»: «checkSigTypeStringForTypeScript(attribute.typ)»«IF attribute.isListe()-»[]«ENDIF-»;
+            «ENDFOREACH-»
+    }
+        «ENDFOREACH-»
+        «FOREACH responses AS response -»
+    export interface «response.technicalName» extends BasisA {
+            «FOREACH response.attributes AS attribute -»
+            «attribute.technicalName»: «checkSigTypeStringForTypeScript(attribute.typ)»«IF attribute.isListe()-»[]«ENDIF-»; 
+            «ENDFOREACH-»
+    }
+        «ENDFOREACH-»
+        «FOREACH members AS member -»
+    export interface «member.technicalName» extends BasisDM {
+            «FOREACH member.attributes AS attribute -»
+            «attribute.technicalName»: «checkSigTypeStringForTypeScript(attribute.typ)»«IF attribute.isListe()-»[]«ENDIF-»;
+            «ENDFOREACH-»
+    }
+        «ENDFOREACH-»
+}
+        «ENDIF-»
+        «ENDLET-»
+        «ENDLET-»
+        «ENDLET-»
+    «ENDFOREACH-»
+«ENDLET-»
+«ENDFOREACH-»
+«ENDFILE-»
+«ENDDEFINE-»
